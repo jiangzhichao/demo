@@ -1,0 +1,233 @@
+banner.show ? <div
+                style={{
+                    width: banner.width + 'px',
+                    height: banner.height + 'px',
+                    left: banner.x + 'px',
+                    top: banner.y + 'px'
+                }}
+                className="cat-banner"
+            >
+                <img src={imgUrl}/>
+            </div> : null
+            
+            
+            
+            
+ <div
+                style={{
+                    width: width + 'px',
+                    height: height + 'px',
+                    left: x + 'px',
+                    top: y + 'px'
+                }}
+                className={isUnrivaled ? 'cat-body-star' : 'cat-body'}
+            >
+                <Life currentLife={level} width={width} percent={level / 3}/>
+                <img style={direction === 0 ? {transform: 'rotateY(180deg)'} : {}} src={src}/>
+                {readyEmit && <div
+                    style={{
+                        width: readyEmitWidth,
+                        height: readyEmitHeight,
+                        left: direction ? width / 2 : width / 2 - readyEmitWidth,
+                        top: height / 2 - readyEmitHeight / 2,
+                        // boxShadow: `0px 0px ${readyEmitWidth / 10}px #2dd43d`
+                    }}
+                    className="cat-emit"
+                />}
+            </div>
+            
+            
+            
+       <div>
+                {
+                    bosses.map(boss => (
+                        !boss.die ? <div
+                            key={boss.id}
+                            style={{
+                                width: boss.width + 'px',
+                                height: boss.height + 'px',
+                                left: boss.x + 'px',
+                                top: boss.y + 'px',
+                            }}
+                            className="cat-boss"
+                        >
+                            <Life currentLife={boss.currentLife} width={boss.width}
+                                  percent={boss.currentLife / boss.allLife}/>
+                        </div> : null
+                    ))
+                }
+            </div>
+            
+            
+            
+            
+            <div>
+                {
+                    bullets.map(i => (
+                        <div
+                            key={i.id}
+                            style={{
+                                width: i.width + 'px',
+                                height: i.height + 'px',
+                                left: i.x + 'px',
+                                top: i.y + 'px',
+                                // boxShadow: `0px 0px ${i.width / 10}px #2dd43d`
+                            }}
+                            className="cat-bullet"
+                        />
+                    ))
+                }
+            </div>
+            
+            
+            
+            const allCollection = [];
+
+        for (let i = 0; i < this.props.allCollection; i++) {
+            allCollection.push(i + 1);
+        }
+        const des = [
+            '极限跳跃',
+            '攻占boss'
+        ];
+
+        return (
+            <div
+                className="cat-control"
+            >
+                <a>按 c 键跳跃 x 发射子弹(可蓄力，蓄力越久伤害越高) ← → 控制方向</a>
+
+                {
+                    allCollection.map(i => (
+                        <Button
+                            key={i}
+                            onClick={() => {
+                                this.props.actions.changeCat({collection: i});
+                            }}
+                            style={{width: '100%', marginTop: '10px'}}
+                            type={i !== this.props.collection ? 'success' : 'primary'}
+                        >第{i}关-{des[i - 1]}</Button>
+                    ))
+                }
+            </div>
+        );
+        
+        
+        
+        <div>
+                {
+                    enemyBullets.map(i => (
+                        <div
+                            key={i.id}
+                            style={{
+                                width: i.width + 'px',
+                                height: i.height + 'px',
+                                left: i.x + 'px',
+                                top: i.y + 'px',
+                                // boxShadow: `0px 0px ${i.width / 10}px #2dd43d`
+                            }}
+                            className="cat-enemy-bullet"
+                        />
+                    ))
+                }
+            </div>
+            
+            
+            
+            <div>
+                {
+                    mushrooms.map((i, index) => (
+                        <div
+                            key={index}
+                            style={{
+                                width: i.width + 'px',
+                                height: i.height + 'px',
+                                left: i.x + 'px',
+                                top: i.y + 'px'
+                            }}
+                            className="cat-mushroom"
+                        >
+                            <img src={mushroomPng}/>
+                        </div>
+                    ))
+                }
+            </div>
+            
+            
+            <div>
+                {
+                    places.map((i, index) => (
+                        !i.isOpacity ? <div
+                            key={index}
+                            style={{
+                                width: i.width + 'px',
+                                height: i.height + 'px',
+                                left: i.x + 'px',
+                                top: i.y + 'px',
+                            }}
+                            className="cat-place"
+                        /> : null
+                    ))
+                }
+            </div>
+            
+            
+            
+            <div>
+                {
+                    placeDirections.map((i, index) => (
+                        <div
+                            key={index}
+                            style={{
+                                width: i.width + 'px',
+                                height: i.height + 'px',
+                                left: i.x + 'px',
+                                top: i.y + 'px'
+                            }}
+                            className="cat-place-direction"
+                        >
+                            <div style={{
+                                width: i.width + 'px',
+                                height: i.directionWidth + 'px',
+                                backgroundColor: i.top ? '#ff5a49' : 'none'
+                            }}/>
+                            <div style={{
+                                width: i.height + 'px',
+                                height: i.directionWidth + 'px',
+                                top: (i.height - i.directionWidth) / 2 + 'px',
+                                right: -(i.height - i.directionWidth) / 2 + 'px',
+                                backgroundColor: i.right ? '#ff5a49' : 'none'
+                            }}/>
+                            <div style={{
+                                width: i.width + 'px',
+                                height: i.directionWidth + 'px',
+                                bottom: 0 + 'px',
+                                right: 0 + 'px',
+                                backgroundColor: i.bottom ? '#ff5a49' : 'none'
+                            }}/>
+                            <div style={{
+                                width: i.height + 'px',
+                                height: i.directionWidth + 'px',
+                                bottom: (i.height - i.directionWidth) / 2 + 'px',
+                                left: -(i.height - i.directionWidth) / 2 + 'px',
+                                backgroundColor: i.left ? '#ff5a49' : 'none'
+                            }}/>
+                        </div>
+                    ))
+                }
+            </div>
+            
+            
+            return (
+            <div style={{left: this.props.stage.x}} className="cat-stage">
+                <Body/>
+                <Place/>
+                <Mushroom/>
+                <PlaceDirection/>
+                <Banner/>
+                <Control/>
+                <Bullet/>
+                <Boss/>
+                <EnemyBullet/>
+            </div>
+        );

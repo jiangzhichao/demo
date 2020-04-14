@@ -1,0 +1,94 @@
+import stage from './stage';
+
+export default class Snake {
+    constructor(config = {}) {
+        this.id = config.id;
+        this.name = config.name;
+
+        this.x = 'x' in config ? config.x : parseInt(Math.random() * stage.xWidth - 1600) + 1600;
+        // this.y = 'y' in config ? config.y : parseInt(Math.random() * stage.yWidth);
+        this.y = 500;
+        this.z = 'z' in config ? config.z : parseInt(Math.random() * stage.zWidth);
+
+        this.speed = 3;
+        this._sb = this.speed;
+        this._speed = 0;
+        this.direction = [90, 90];
+        this.color = Snake.getRandomColor();
+        this.lv = 80;
+        this._s = 0;
+        this.bodys = [];
+        this.needLeveUp = 0;
+        this.keyCode = {};
+
+        this.initSnake();
+    }
+
+    static getRandomColor = () => {
+        return '#' + ('01000' + (Math.random() * 0x1000000 << 0).toString(16)).substr(-6);
+    };
+
+    static currentUpdate = 0;
+
+    // type = 'snake';
+
+    resetColor = () => {
+        this.color = Snake.getRandomColor();
+    };
+
+    initSnake = () => {
+        for (let i = 0; i < 20; i++) {
+            this.bodys.push(this.x - i * this.lv);
+            this.bodys.push(this.y);
+            this.bodys.push(this.z);
+        }
+    };
+
+    go = () => {
+        if (this._speed < this.speed) {
+            this._speed++;
+
+            return;
+        }
+
+        this._speed = 0;
+
+        this.z = this.z + Math.sin(2 * Math.PI * this.direction[0] / 360) * Math.cos(2 * Math.PI * this.direction[1] / 360);
+        this.x = this.x + Math.sin(2 * Math.PI * this.direction[0] / 360) * Math.sin(2 * Math.PI * this.direction[1] / 360);
+        this.y = this.y + Math.cos(2 * Math.PI * this.direction[0] / 360);
+
+        this.bodys[0] = parseFloat(this.x.toFixed(2));
+        this.bodys[1] = parseFloat(this.y.toFixed(2));
+        this.bodys[2] = parseFloat(this.z.toFixed(2));
+
+        if (this._s < this.lv) {
+            this._s++;
+
+            return;
+        }
+
+        this._s = 0;
+
+        const upState = [...this.bodys];
+
+        for (let i = 1; i < this.bodys.length / 3; i++) {
+            this.bodys[i * 3] = upState[i * 3 - 3];
+            this.bodys[i * 3 + 1] = upState[i * 3 - 2];
+            this.bodys[i * 3 + 2] = upState[i * 3 - 1];
+        }
+    };
+
+    eat = point => {
+        this.needLeveUp += point.w / 20;
+
+        if (this.needLeveUp > (this.lv - 80) / 10) {
+            this.lv++;
+            this.needLeveUp = 0;
+
+            const len = this.bodys.length;
+            const end = [this.bodys[len - 3], this.bodys[len - 2], this.bodys[len - 1]];
+
+            this.bodys.push(...end);
+        }
+    };
+}

@@ -17,8 +17,6 @@ export default function ioConnect(io, runnable) {
     const snakes = {};
     const points = new Points();
 
-    points.initPoints();
-
     io.path('/ws');
     io
         .on('connection', socketioJwt.authorize({

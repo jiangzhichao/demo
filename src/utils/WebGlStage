@@ -54,7 +54,11 @@ export default class WebGlStage extends Component {
         this.initFont();
         // this.initDirection();
 
-        message.success('长按空格加速移动，←→控制方向移动, 吃小方块会变大变长', 20);
+        if (this.isMobile()) {
+            message.success('横屏游戏体验更佳哦', 20);
+        } else {
+            message.success('长按空格加速移动，←→控制方向移动, 吃小方块会变大变长', 20);
+        }
     }
 
     componentWillUnmount() {
@@ -132,9 +136,9 @@ export default class WebGlStage extends Component {
                     this.points = points;
                     this.modelControl();
                 })
-                .on('init', ({stage, snakes}) => {
+                .on('init', ({stage}) => {
                     this.stage = stage;
-                    this.direction = snakes[this.props.user._id].direction;
+                    // this.direction = snakes[this.props.user._id].direction;
 
                     this.initHelp();
                     // this.addStage();
@@ -160,6 +164,9 @@ export default class WebGlStage extends Component {
         return (
             <div style={{padding: '10px', position: 'absolute', right: '0px', top: '0px'}}>
                 <span className="jzc-button" onClick={this.changeColor}>换肤</span>
+                <span className="jzc-button" onClick={() => {
+                    document.body.requestFullscreen();
+                }}>全屏</span>
             </div>
         );
     };
@@ -176,7 +183,7 @@ export default class WebGlStage extends Component {
                             delete this.keyCode[32];
                         }}
                         className="jzc-button-m"
-                    >加速</span>
+                    >快</span>
                 </div>
                 <div>
                     <span
@@ -279,6 +286,35 @@ export default class WebGlStage extends Component {
         this.scene.add(stage);
     };
 
+    createFont = ({x, y, z, text, c}) => {
+        if (!this.fontLoad) return;
+
+        const g = new THREE.TextGeometry(text, {
+            font: this.fontLoad,
+            size: 100,
+            height: 2
+        });
+        const material = new THREE.MeshBasicMaterial({
+            color: c,
+            transparent: true,
+            opacity: 0.9
+        });
+
+        const mesh = new THREE.Mesh(g, material);
+        mesh.position.x = x;
+        mesh.position.y = y;
+        mesh.position.z = z;
+        mesh.rotation.y = Math.PI * (this.snakes[this.props.user._id].direction[1] - 180) / 180;
+        // mesh._name = text;
+
+        // this._fonts[key] = mesh;
+        this.scene.add(mesh);
+
+        setTimeout(() => {
+            this.scene.remove(mesh);
+        }, 2000);
+    };
+
     modelControl = () => {
         // 添加
         for (const key in this.points) {
@@ -293,6 +329,7 @@ export default class WebGlStage extends Component {
                 snakeObj.position.x = point.x;
                 snakeObj.position.y = point.y;
                 snakeObj.position.z = point.z;
+                snakeObj.point = point;
 
                 this.scene.add(snakeObj);
                 this._points[key] = snakeObj;
@@ -302,10 +339,19 @@ export default class WebGlStage extends Component {
         // 删除
         for (const key in this._points) {
             const point = this.points[key];
+            const _point = this._points[key];
 
             if (!point) {
-                this.scene.remove(this._points[key]);
 
+                this.createFont({
+                    x: _point.point.x,
+                    y: _point.point.y + 200,
+                    z: _point.point.z,
+                    text: '+' + _point.point.w / 20,
+                    c: _point.point.c
+                });
+
+                this.scene.remove(_point);
                 delete this._points[key];
             }
         }
@@ -344,22 +390,22 @@ export default class WebGlStage extends Component {
     };
 
     fontControl = () => {
-        if (!this.fontLoad) return;
-
         for (const key in this.snakes) {
             const snake = this.snakes[key];
             const _light = this._lights[key];
 
             if (!_light) {
                 const light = new THREE.PointLight(0xffffff, 5, 2000);
-                light.position.set(snake.x, snake.y + snake.lv + 100, snake.z);
+                light.position.set(snake.x, snake.y + snake.lv + 500, snake.z);
 
                 this._lights[key] = light;
                 this.scene.add(light);
             } else {
-                _light.position.set(snake.x, snake.y + snake.lv + 100, snake.z);
+                _light.position.set(snake.x, snake.y + snake.lv + 500, snake.z);
             }
         }
+
+        if (!this.fontLoad) return;
 
         for (const key in this.snakes) {
             const snake = this.snakes[key];
@@ -438,6 +484,7 @@ export default class WebGlStage extends Component {
 
     init = () => {
         this.stats = new Stats();
+        this.stats.dom.style.opacity = 0.5;
 
         this.container = document.getElementById('web-gl-stage');
         this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 10000);

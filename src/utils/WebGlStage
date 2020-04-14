@@ -1,0 +1,614 @@
+import React, {Component} from 'react';
+import {render} from 'react-dom';
+import * as THREE from 'three';
+import Stats from '../../lib/three/examples/jsm/libs/stats.module';
+// import {OrbitControls} from '../../lib/three/examples/jsm/controls/OrbitControls.js';
+import io from 'socket.io-client';
+import {connect} from 'react-redux';
+import Cookies from 'js-cookie';
+import {message} from 'antd';
+
+@connect(
+    state => ({
+        user: state.auth.user,
+    })
+)
+export default class WebGlStage extends Component {
+    constructor(...arg) {
+        super(...arg);
+
+        this.snakes = {};
+        this._snakes = {};
+        this.points = {};
+        this._points = {};
+        this.keyCode = {};
+        this.stage = {};
+        this.direction = [90, 90];
+        this.initSnake = false;
+
+        this.controlEle = null;
+        this.centerEle = null;
+        this.checkEle = null;
+
+        this._fonts = {};
+        this._lights = {};
+
+        this.fontLoad = null;
+        this.texture = null;
+    }
+
+    componentDidMount() {
+        if ((window.outerWidth > 1100 || window.outerHeight > 860) && !this.isMobile()) {
+            window.open(window.location.href, 'giao', 'height=700, width=1000, top=100, left=360, toolbar=no, menubar=no, scrollbars=no, resizable=no, location=no, status=no');
+
+            return;
+        }
+
+        window.THREE = THREE;
+
+        this.initTexture();
+        this.init();
+        this.animate();
+        this.initSocket();
+        // this.initWorker();
+        this.initFont();
+        // this.initDirection();
+
+        message.success('长按空格加速移动，←→控制方向移动, 吃小方块会变大变长', 20);
+    }
+
+    componentWillUnmount() {
+        cancelAnimationFrame(this.time);
+        THREE.Cache.clear();
+        window.removeEventListener('resize', this.onWindowResize);
+    }
+
+    isMobile = () => {
+        return /(iPhone|iPad|iPod|iOS|Android)/i.test(navigator.userAgent);
+    };
+
+    initWorker = () => {
+        const worker = new Worker('worker/socket.js');
+
+        worker.postMessage({
+            begin: true,
+            cookie: Cookies.get('token'),
+            user: this.props.user
+        });
+
+        worker.onmessage = res => {
+            const data = res.data;
+
+            if (data.key === 'loop') {
+                worker.postMessage({keyCode: this.keyCode});
+
+                this.snakes = data.snakes;
+                this.addSnake();
+                this.controlRender();
+                this.fontControl();
+            }
+
+            if (data.key === 'points') {
+                this.points = data.points;
+                this.modelControl();
+            }
+
+            if (data.key === 'init') {
+                this.stage = data.stage;
+                this.initHelp();
+            }
+        };
+
+        document.addEventListener('keydown', e => {
+            this.keyCode[e.keyCode] = true;
+        });
+
+        document.addEventListener('keyup', e => {
+            delete this.keyCode[e.keyCode];
+        });
+    };
+
+    initSocket = () => {
+        const socket = this.socket = io('', {path: '/ws'});
+
+        socket.on('connect', () => {
+            socket
+                .emit('authenticate', {token: Cookies.get('token')})
+                .on('authenticated', () => {
+                    socket.emit('login', this.props.user);
+                })
+                .on('unauthorized', msg => {
+                    console.log(msg);
+                })
+                .on('loop', ({snakes}) => {
+                    this.snakes = snakes;
+
+                    socket.emit('ok', this.keyCode);
+                    this.addSnake();
+                    this.controlRender();
+                    this.fontControl();
+                })
+                .on('points', ({points}) => {
+                    this.points = points;
+                    this.modelControl();
+                })
+                .on('init', ({stage, snakes}) => {
+                    this.stage = stage;
+                    this.direction = snakes[this.props.user._id].direction;
+
+                    this.initHelp();
+                    // this.addStage();
+                });
+        });
+
+        document.addEventListener('keydown', e => {
+            if (this.keyCode[e.keyCode]) return;
+
+            this.keyCode[e.keyCode] = true;
+        });
+
+        document.addEventListener('keyup', e => {
+            delete this.keyCode[e.keyCode];
+        });
+    };
+
+    changeColor = () => {
+        this.socket.emit('changeSnakeColor');
+    };
+
+    controlButtonGroup = () => {
+        return (
+            <div style={{padding: '10px', position: 'absolute', right: '0px', top: '0px'}}>
+                <span className="jzc-button" onClick={this.changeColor}>换肤</span>
+            </div>
+        );
+    };
+
+    mobileControl = () => {
+        return (
+            <div>
+                <div>
+                    <span
+                        onTouchStart={() => {
+                            this.keyCode[32] = true;
+                        }}
+                        onTouchEnd={() => {
+                            delete this.keyCode[32];
+                        }}
+                        className="jzc-button-m"
+                    >加速</span>
+                </div>
+                <div>
+                    <span
+                        onTouchStart={() => {
+                            this.keyCode[37] = true;
+                        }}
+                        onTouchEnd={() => {
+                            delete this.keyCode[37];
+                        }}
+                        className="jzc-button-m"
+                    >左</span>
+                    <span
+                        onTouchStart={() => {
+                            this.keyCode[39] = true;
+                        }}
+                        onTouchEnd={() => {
+                            delete this.keyCode[39];
+                        }}
+                        className="jzc-button-m"
+                    >右</span>
+                </div>
+            </div>
+        );
+    };
+
+    initFont = () => {
+        const fontLoader = new THREE.FontLoader();
+
+        fontLoader.load('font/font_jzc2.json', font => {
+            this.fontLoad = font;
+        });
+    };
+
+    initTexture = () => {
+        const textureLoader = new THREE.TextureLoader();
+        this.texture = textureLoader.load('cat/a.png');
+    };
+
+    initDirection = () => {
+        // const changeRate = 1;
+
+        setInterval(() => {
+            // if (this.keyCode[38]) {
+            //     this.direction[0] -= changeRate;
+            // }
+            //
+            // if (this.keyCode[39]) {
+            //     this.direction[1] -= changeRate;
+            // }
+            //
+            // if (this.keyCode[40]) {
+            //     this.direction[0] += changeRate;
+            // }
+            //
+            // if (this.keyCode[37]) {
+            //     this.direction[1] += changeRate;
+            // }
+            //
+            // if (this.direction[0] <= 4) {
+            //     this.direction[0] = 4;
+            // }
+            //
+            // if (this.direction[0] >= 176) {
+            //     this.direction[0] = 176;
+            // }
+            this.socket.emit('', this.keyCode);
+        }, 20);
+    };
+
+    controlRender = () => {
+        const snake = this.snakes[this.props.user._id];
+
+        if (!snake) return;
+
+        if (!this.controlEle) {
+            this.controlEle = document.querySelector('#snake-direction');
+        } else {
+            this.controlEle.innerText = `↑ ${90 - snake.direction[0]},→ ${(90 - snake.direction[1]) % 360}`;
+        }
+
+        if (!this.centerEle) {
+            this.centerEle = document.querySelector('#snake-check');
+        } else {
+            this.centerEle.style.width = snake.lv * 2 + 'px';
+            this.centerEle.style.height = snake.lv * 2 + 'px';
+        }
+
+    };
+
+    addStage = () => {
+        const geometry = new THREE.PlaneGeometry(this.stage.xWidth, this.stage.yWidth);
+        const material = new THREE.MeshLambertMaterial({color: 'green'});
+        const stage = this._stage = new THREE.Mesh(geometry, material);
+
+        stage.position.x = this.stage.xWidth / 2;
+        stage.position.y = 0;
+        stage.position.z = this.stage.zWidth / 2;
+        stage.rotation.x = -Math.PI * 0.5;
+
+        this.scene.add(stage);
+    };
+
+    modelControl = () => {
+        // 添加
+        for (const key in this.points) {
+            const point = this.points[key];
+            const _point = this._points[key];
+
+            if (!_point) {
+                const geometry = new THREE.BoxGeometry(point.w, point.w, point.w);
+                const material = new THREE.MeshLambertMaterial({color: point.c});
+                const snakeObj = new THREE.Mesh(geometry, material);
+
+                snakeObj.position.x = point.x;
+                snakeObj.position.y = point.y;
+                snakeObj.position.z = point.z;
+
+                this.scene.add(snakeObj);
+                this._points[key] = snakeObj;
+            }
+        }
+
+        // 删除
+        for (const key in this._points) {
+            const point = this.points[key];
+
+            if (!point) {
+                this.scene.remove(this._points[key]);
+
+                delete this._points[key];
+            }
+        }
+
+        // for (const key in this._snakes) {
+        //     const _snake = this._snakes[key];
+        //     const snake = this.snakes[key];
+        //
+        //     // 更新
+        //     if (snake) {
+        //         snake.position.x = _snake.x;
+        //         snake.position.y = _snake.y;
+        //         snake.geometry.parameters.width = _snake.width;
+        //         snake.geometry.parameters.height = _snake.width;
+        //     }
+        //
+        //     // 添加
+        //     if (!snake) {
+        //         const geometry = new THREE.BoxGeometry(_snake.width, _snake.width, 1);
+        //         const material = new THREE.MeshBasicMaterial({color: _snake.color});
+        //         const snakeObj = new THREE.Mesh(geometry, material);
+        //
+        //         this.scene.add(snakeObj);
+        //         this.snakes[_snake.id] = snakeObj;
+        //     }
+        // }
+        //
+        // for (const key in this.snakes) {
+        //     // 删除
+        //     if (!this._snakes[key]) {
+        //         this.scene.remove(this.snakes[key]);
+        //
+        //         delete this.snakes[key];
+        //     }
+        // }
+    };
+
+    fontControl = () => {
+        if (!this.fontLoad) return;
+
+        for (const key in this.snakes) {
+            const snake = this.snakes[key];
+            const _light = this._lights[key];
+
+            if (!_light) {
+                const light = new THREE.PointLight(0xffffff, 5, 2000);
+                light.position.set(snake.x, snake.y + snake.lv + 100, snake.z);
+
+                this._lights[key] = light;
+                this.scene.add(light);
+            } else {
+                _light.position.set(snake.x, snake.y + snake.lv + 100, snake.z);
+            }
+        }
+
+        for (const key in this.snakes) {
+            const snake = this.snakes[key];
+            const _font = this._fonts[key];
+            const text = `${snake.name} Lv${snake.lv - 79}`;
+
+            // 更新
+            if (_font) {
+                const _text = _font._name;
+
+                if (_text === text) {
+                    _font.position.x = snake.x;
+                    _font.position.y = snake.y + snake.lv + 100;
+                    _font.position.z = snake.z;
+                    _font.rotation.y = Math.PI * (snake.direction[1] - 180) / 180;
+                } else {
+                    this.scene.remove(_font);
+
+                    const g = new THREE.TextGeometry(text, {
+                        font: this.fontLoad,
+                        size: 200,
+                        height: 4
+                    });
+                    const material = new THREE.MeshBasicMaterial({
+                        color: '#ffffff',
+                    });
+
+                    const mesh = new THREE.Mesh(g, material);
+                    mesh.position.x = snake.x;
+                    mesh.position.y = snake.y + snake.lv + 20;
+                    mesh.position.z = snake.z;
+                    mesh.rotation.y = Math.PI * (snake.direction[1] - 180) / 180;
+                    mesh._name = text;
+
+                    this._fonts[key] = mesh;
+                    this.scene.add(mesh);
+                }
+            } else {
+                // 添加
+                const g = new THREE.TextGeometry(text, {
+                    font: this.fontLoad,
+                    size: 200,
+                    height: 4
+                });
+                const material = new THREE.MeshBasicMaterial({
+                    color: '#ffffff',
+                });
+
+                const mesh = new THREE.Mesh(g, material);
+                mesh.position.x = snake.x;
+                mesh.position.y = snake.y + snake.lv + 20;
+                mesh.position.z = snake.z;
+                mesh.rotation.y = Math.PI * (snake.direction[1] - 180) / 180;
+                mesh._name = text;
+
+                this._fonts[key] = mesh;
+                this.scene.add(mesh);
+            }
+        }
+    };
+
+    initHelp = () => {
+        const help = this.help = new THREE.GridHelper(this.stage.xWidth, 10, '#555555', '#555555');
+        help.position.x = this.stage.xWidth / 2;
+        help.position.y = 0;
+        help.position.z = this.stage.zWidth / 2;
+
+        // const help2 = this.help2 = new THREE.GridHelper(this.stage.xWidth, 10, '#555555', '#555555');
+        // help2.position.x = this.stage.xWidth / 2;
+        // help2.position.y = this.stage.yWidth;
+        // help2.position.z = this.stage.zWidth / 2;
+
+        this.scene.add(help);
+        // this.scene.add(help2);
+    };
+
+    init = () => {
+        this.stats = new Stats();
+
+        this.container = document.getElementById('web-gl-stage');
+        this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 10000);
+        this.scene = new THREE.Scene();
+
+        this.scene.fog = new THREE.Fog(0x2194ce, 0.015, 10000);
+
+        this.renderer = new THREE.WebGLRenderer({antialias: true});
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        // this.renderer.shadowMapEnabled = true;
+        this.container.appendChild(this.renderer.domElement);
+        this.container.appendChild(this.stats.dom);
+
+        const controlEle = document.createElement('span');
+        this.container.appendChild(controlEle);
+        render(this.controlButtonGroup(), controlEle);
+
+        if (this.isMobile()) {
+            const mobileEle = document.createElement('div');
+            mobileEle.className = 'mobile-control';
+            this.container.appendChild(mobileEle);
+            render(this.mobileControl(), mobileEle);
+        }
+
+        // this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+        // const controls = this.controls;
+
+        // controls.enableKeys = false;
+        // controls.target.x = 0;
+        // controls.target.y = 180;
+        // controls.target.z = -500;
+
+        this.camera.position.x = 0;
+        this.camera.position.y = 200;
+        this.camera.position.z = 0;
+        this.camera.lookAt(0, 0, 0);
+
+        // this.camera2 = new THREE.PerspectiveCamera(70, 1, 0.1, 10000);
+
+        window.addEventListener('resize', this.onWindowResize, false);
+
+        window.jzc = this;
+    };
+
+    addSnake = () => {
+        const snakeObject = new THREE.Group();
+        const keys = Object.keys(this.snakes);
+
+        if (!keys.length) return;
+
+        keys.forEach(key => {
+            const snake = this.snakes[key];
+            const vectors = [];
+
+            for (let i = 0; i < snake.bodys.length / 3; i++) {
+                vectors.push(new THREE.Vector3(snake.bodys[i * 3], snake.bodys[i * 3 + 1], snake.bodys[i * 3 + 2]));
+            }
+
+            const path = new THREE.CatmullRomCurve3(vectors);
+            const geometry = new THREE.TubeGeometry(path, parseInt(snake.bodys.length / 4), snake.lv, 20, false);
+
+            const material = new THREE.MeshBasicMaterial({
+                color: snake.color,
+                opacity: 0.9,
+                wireframe: false,
+                transparent: true,
+                // vertexColors: true
+                fog: true,
+                map: this.texture
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+
+            const _material = new THREE.MeshBasicMaterial({
+                color: snake.color,
+            });
+            const headGeometry = new THREE.SphereBufferGeometry(snake.lv, 20, 10);
+            const headMesh = new THREE.Mesh(headGeometry, _material);
+
+            const __material = new THREE.MeshBasicMaterial({
+                color: snake.color,
+                opacity: 0.7,
+                transparent: true
+            });
+            const tailMesh = new THREE.Mesh(headGeometry, __material);
+
+            headMesh.position.x = snake.x;
+            headMesh.position.y = snake.y;
+            headMesh.position.z = snake.z;
+
+            tailMesh.position.x = vectors[vectors.length - 1].x;
+            tailMesh.position.y = vectors[vectors.length - 1].y;
+            tailMesh.position.z = vectors[vectors.length - 1].z;
+
+            snakeObject.add(mesh);
+            snakeObject.add(headMesh);
+            snakeObject.add(tailMesh);
+        });
+
+        if (this.snakeObject) this.scene.remove(this.snakeObject);
+
+        this.snakeObject = snakeObject;
+        this.scene.add(snakeObject);
+    };
+
+    cameraMove = () => {
+        const oneSnake = this.snakes[this.props.user._id];
+
+        if (!oneSnake) return;
+
+        const moveLen = 120;
+        const lastLen = 2200;
+        const yLen = 280 + oneSnake.lv;
+
+        const bodys = oneSnake.bodys;
+        const head = [bodys[0], bodys[1], bodys[2]];
+
+        const x = head[0] - Math.sin(2 * Math.PI * 60 / 360) * Math.sin(2 * Math.PI * oneSnake.direction[1] / 360) * lastLen + moveLen;
+        const y = head[1] - Math.cos(2 * Math.PI * 60 / 360) * lastLen + moveLen + yLen;
+        const z = head[2] - Math.sin(2 * Math.PI * 60 / 360) * Math.cos(2 * Math.PI * oneSnake.direction[1] / 360) * lastLen + moveLen;
+
+        // const _x = head[0] + Math.sin(2 * Math.PI * oneSnake.direction[0] / 360) * Math.sin(2 * Math.PI * oneSnake.direction[1] / 360);
+        // const _y = head[1] + Math.cos(2 * Math.PI * oneSnake.direction[0] / 360);
+        // const _z = head[2] + Math.sin(2 * Math.PI * oneSnake.direction[0] / 360) * Math.cos(2 * Math.PI * oneSnake.direction[1] / 360);
+
+        // this.camera2.position.x = head[0];
+        // this.camera2.position.y = head[1];
+        // this.camera2.position.z = head[2];
+        // this.camera2.lookAt(_x, _y, _z);
+
+        this.camera.position.x = x;
+        this.camera.position.y = y + 3000;
+        this.camera.position.z = z;
+        this.camera.lookAt(head[0], head[1], head[2]);
+    };
+
+    onWindowResize = () => {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+    };
+
+    stopAnimate = () => {
+        cancelAnimationFrame(this.time);
+    };
+
+    animate = () => {
+        this.cameraMove();
+        this.stats.update();
+
+        // this.renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+        // this.renderer.setClearColor(0x000000, 0);
+        this.renderer.render(this.scene, this.camera);
+
+        // this.renderer.clearDepth();
+        // this.renderer.setScissorTest(true);
+
+        // this.renderer.setScissor(0, 0, 300, 300);
+        // this.renderer.setViewport(0, 0, 300, 300);
+
+        // this.camera2.position.copy(this.camera.position);
+        // this.camera2.quaternion.copy(this.camera.quaternion);
+        // this.renderer.setClearColor(0x222222, 1);
+        // this.renderer.render(this.scene, this.camera2);
+
+        // this.renderer.setScissorTest(false);
+        this.time = requestAnimationFrame(this.animate);
+    };
+
+    render() {
+        return (
+            <div id="web-gl-stage" style={{height: '100%'}}/>
+        );
+    }
+}

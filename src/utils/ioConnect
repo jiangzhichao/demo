@@ -1,0 +1,315 @@
+/**
+ * Created by jiang on 2017/3/6.
+ */
+import socketioJwt from 'socketio-jwt';
+import config from '../config';
+import stage from './webgl/stage';
+import Snake from './webgl/Snake';
+import Points from './webgl/Points';
+
+let timer;
+let pointsTimer;
+let directionTimer;
+let shouldSendPoints = true;
+
+export default function ioConnect(io, runnable) {
+    const onlineUsers = {};
+    const snakes = {};
+    const points = new Points();
+
+    points.initPoints();
+
+    io.path('/ws');
+    io
+        .on('connection', socketioJwt.authorize({
+            secret: config.tokenSecret,
+            timeout: 15000
+        }))
+        .on('authenticated', (socket) => {
+
+            socket.shouldSend = true;
+            socket.timer = null;
+
+            socket.on('login', data => {
+                socket.user = data;
+
+                if (!snakes[data._id]) {
+                    snakes[data._id] = getNewSnake({id: data._id, name: data.name});
+                    // snakes[data._id].user = {n: data.name};
+                }
+
+                onlineUsers[data._id] = data;
+                onlineUsers[data._id].socketId = socket.id;
+                console.log(`在线人数: ${Object.keys(onlineUsers).length}    ${data.name}上线`);
+
+                clearInterval(socket.timer);
+                socket.timer = setInterval(() => {
+                    if (socket.shouldSend) {
+                        socket.shouldSend = false;
+
+                        socket.emit('loop', {snakes});
+                    }
+                }, 10);
+
+                const _points = {};
+                points.points.forEach(i => _points[i.id] = i);
+
+                socket.emit('points', {points: _points});
+                socket.emit('init', {stage, snakes});
+            });
+
+            socket.on('ok', code => {
+                socket.shouldSend = true;
+
+                if (!socket.user || !code) return;
+
+                const _id = socket.user._id;
+                snakes[_id].keyCode = code;
+            });
+
+            socket.on('disconnect', () => {
+                if (!socket.user) return;
+
+                delete onlineUsers[socket.user._id];
+
+                console.log(`在线人数: ${Object.keys(onlineUsers).length}    ${socket.user.name}下线`);
+            });
+
+            socket.on('changeSnakeColor', () => {
+                if (!socket.user) return;
+
+                // snakes[socket.user._id] = getNewSnake();
+                // snakes[socket.user._id].user = socket.user;
+
+                snakes[socket.user._id].resetColor();
+            });
+        });
+
+    io.listen(runnable);
+
+    clearInterval(timer);
+    timer = setInterval(() => {
+        boundaryCheck();
+        snakeMove();
+        checkSnakeAndSnake();
+        checkSnakeAndPoints();
+    }, 1);
+
+    clearInterval(pointsTimer);
+    pointsTimer = setInterval(() => {
+        if (!shouldSendPoints) return;
+
+        shouldSendPoints = false;
+
+        const _points = {};
+        points.points.forEach(i => _points[i.id] = i);
+
+        io.sockets.emit('points', {points: _points});
+    }, 100);
+
+    clearInterval(directionTimer);
+    directionTimer = setInterval(directionControl, 20);
+
+    function directionControl() {
+        for (const key in snakes) {
+            const snake = snakes[key];
+
+            const direction = snake.direction;
+            const keyObj = snake.keyCode;
+            const changeRate = 1;
+
+            // if (keyObj[38]) {
+            //     direction[0] -= changeRate;
+            // }
+
+            if (keyObj[39]) {
+                direction[1] -= changeRate;
+            }
+
+            // if (keyObj[40]) {
+            //     direction[0] += changeRate;
+            // }
+
+            if (keyObj[37]) {
+                direction[1] += changeRate;
+            }
+
+            if (keyObj[32]) {
+                snake.speed = 0;
+            } else {
+                snake.speed = snake._sb;
+            }
+
+            if (direction[0] <= 4) {
+                direction[0] = 4;
+            }
+
+            if (direction[0] >= 176) {
+                direction[0] = 176;
+            }
+        }
+    }
+
+    function snakeMove() {
+        for (const key in snakes) {
+            const snake = snakes[key];
+
+            snake.go();
+        }
+    }
+
+    function checkSnakeAndSnake() {
+        const keys = Object.keys(snakes);
+
+        for (let i = 0; i < keys.length; i++) {
+            const one = snakes[keys[i]];
+            const oneName = snakes[keys[i]].name;
+
+            for (let j = 0; j < keys.length; j++) {
+                const twoIndex = j;
+
+                const two = snakes[keys[twoIndex]];
+
+                if (one === two) continue;
+
+                const twoName = snakes[keys[twoIndex]].name;
+
+                const oneBodys = one.bodys;
+                const twoBodys = two.bodys;
+
+                const oneSnakeHead = [oneBodys[0], oneBodys[1], oneBodys[2]];
+
+                for (let k = 0; k < twoBodys.length / 3; k++) {
+                    const twoBody = [twoBodys[k * 3], twoBodys[k * 3 + 1], twoBodys[k * 3 + 2]];
+
+                    if (k > 0) {
+                        if (Math.sqrt(
+                            Math.pow(oneSnakeHead[0] - twoBody[0], 2) +
+                            Math.pow(oneSnakeHead[1] - twoBody[1], 2) +
+                            Math.pow(oneSnakeHead[2] - twoBody[2], 2)
+                        ) <= one.lv + two.lv) {
+                            snakes[keys[i]] = getNewSnake({id: keys[i], name: oneName});
+
+                            points.addPoints(one);
+
+                            break;
+                        }
+                    } else {
+                        if (Math.sqrt(Math.pow(oneSnakeHead[0] - twoBody[0], 2) + Math.pow(oneSnakeHead[1] - twoBody[1], 2) + Math.pow(oneSnakeHead[2] - twoBody[2], 2)) <= one.lv + two.lv) {
+                            if (one.lv > two.lv) {
+                                snakes[keys[twoIndex]] = getNewSnake({id: keys[twoIndex], name: twoName});
+                                points.addPoints(two);
+                            } else if (one.lv < two.lv) {
+                                snakes[keys[i]] = getNewSnake({id: keys[i], name: oneName});
+                                points.addPoints(one);
+                            } else {
+                                snakes[keys[i]] = getNewSnake({id: keys[i], name: oneName});
+                                snakes[keys[twoIndex]] = getNewSnake({id: keys[twoIndex], name: twoName});
+
+                                points.addPoints(one);
+                                points.addPoints(two);
+                            }
+
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function checkSnakeAndPoints() {
+        const _points = points.points;
+
+        let cursor = 0;
+
+        for (let i = 0; i < _points.length - cursor; i++) {
+            const currentPoint = _points[i];
+
+            for (const key in snakes) {
+                const snake = snakes[key];
+                const snakeHead = [snake.bodys[0], snake.bodys[1], snake.bodys[2]];
+
+                if (Math.sqrt(Math.pow(snakeHead[0] - currentPoint.x, 2) + Math.pow(snakeHead[1] - currentPoint.y, 2) + Math.pow(snakeHead[2] - currentPoint.z, 2)) <= snake.lv + currentPoint.w / 2) {
+                    snake.eat(currentPoint);
+
+                    points.points.splice(i, 1);
+                    points.addPoints();
+
+                    i--;
+                    cursor++;
+
+                    break;
+                }
+            }
+        }
+    }
+
+    function boundaryCheck() {
+        for (const key in snakes) {
+            const snake = snakes[key];
+
+            if (snake._c) continue;
+
+            if (snake.x >= stage.xWidth || snake.y >= stage.yWidth || snake.z >= stage.zWidth || snake.x <= 0 || snake.y <= 0 || snake.z <= 0) {
+                snake._c = true;
+
+                setTimeout(() => {
+                    delete snake._c;
+                }, 2000);
+
+                snake.direction = [(180 - snake.direction[0]) % 180, (180 + snake.direction[1]) % 360];
+            }
+        }
+    }
+
+    function getNewSnake({id, name}) {
+        let snake;
+        let max = 1500;
+
+        const checkCrash = () => {
+            let result = true;
+
+            const keys = Object.keys(snakes);
+            const two = snake = new Snake({id, name});
+
+            for (let i = 0; i < keys.length; i++) {
+                const one = snakes[keys[i]];
+
+                if (one === two) continue;
+
+                const oneBodys = one.bodys;
+                const twoBodys = two.bodys;
+
+                const oneSnakeHead = [oneBodys[0], oneBodys[1], oneBodys[2]];
+
+                for (let k = 0; k < twoBodys.length / 3; k++) {
+                    const twoBody = [twoBodys[k * 3], twoBodys[k * 3 + 1], twoBodys[k * 3 + 2]];
+
+                    if (Math.sqrt(
+                        Math.pow(oneSnakeHead[0] - twoBody[0], 2) +
+                        Math.pow(oneSnakeHead[1] - twoBody[1], 2) +
+                        Math.pow(oneSnakeHead[2] - twoBody[2], 2)
+                    ) <= max) {
+                        result = false;
+                        break;
+                    }
+                }
+            }
+
+            if (!result && max > 0) {
+                max -= 5;
+                checkCrash();
+            }
+        };
+
+        checkCrash();
+
+        return snake;
+    }
+
+    global.emitPoints = () => {
+        shouldSendPoints = true;
+    };
+}
+

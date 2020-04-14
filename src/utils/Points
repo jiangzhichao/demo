@@ -1,0 +1,74 @@
+import stage from './stage';
+
+class Point {
+    constructor(config = {}) {
+        this.x = 'x' in config ? config.x : parseInt(Math.random() * stage.xWidth);
+        // this.y = 'y' in config ? config.y : parseInt(Math.random() * stage.yWidth);
+        this.y = 500;
+        this.z = 'z' in config ? config.z : parseInt(Math.random() * stage.zWidth);
+        this.c = 'c' in config ? config.c : Point.getRandomColor();
+        this.w = 'w' in config ? config.w : 40;
+
+        this.id = ++Point.id;
+    }
+
+    static id = -1;
+    static getRandomColor = () => {
+        return '#' + ('00000' + (Math.random() * 0x1000000 << 0).toString(16)).substr(-6);
+    };
+
+    // type = 'point';
+}
+
+export default class Points {
+    constructor() {
+        this.points = [];
+
+        this.initPoints();
+    }
+
+    static MAX_POINTS = 300;
+
+    initPoints = () => {
+        const randomLen = 280;
+
+        for (let i = 0; i < randomLen; i++) {
+            this.points.push(new Point({
+                x: parseInt(Math.random() * stage.xWidth / 5 + stage.xWidth / 2),
+                y: parseInt(Math.random() * stage.yWidth / 5 + stage.yWidth / 2),
+                z: parseInt(Math.random() * stage.zWidth / 5 + stage.zWidth / 2)
+            }));
+        }
+
+        for (let j = 0; j < Points.MAX_POINTS - randomLen; j++) {
+            this.points.push(new Point());
+        }
+    };
+
+    addPoints = snake => {
+        if (snake) {
+            const bodys = snake.bodys;
+            const lv = snake.lv;
+            const w = (parseInt(lv / 80) + 2) * 20;
+
+            for (let i = 0; i < bodys.length / 3; i++) {
+                const config = {};
+
+                config.x = bodys[i * 3];
+                config.y = bodys[i * 3 + 1];
+                config.z = bodys[i * 3 + 2];
+                config.w = w;
+
+                this.points.push(new Point(config));
+            }
+        } else {
+            this.points.push(new Point());
+        }
+
+        if (this.points.length > Points.MAX_POINTS) {
+            this.points.splice(0, this.points.length - Points.MAX_POINTS);
+        }
+
+        global.emitPoints();
+    };
+}

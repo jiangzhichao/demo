@@ -1,0 +1,5 @@
+export default {
+    xWidth: 15000,
+    yWidth: 15000,
+    zWidth: 15000
+};
